@@ -4,6 +4,19 @@ A suite of specialized MCP servers that help you get the most out of AWS, wherev
 
 ## Available MCP Servers
 
+### AWS Bedrock Data Automation MCP Server
+
+A Model Context Protocol (MCP) server for Amazon Bedrock Data Automation that enables AI assistants to analyze documents, images, videos, and audio files using Amazon Bedrock Data Automation projects.
+
+**Features:**
+
+- Project Management: List and get details about Bedrock Data Automation projects
+- Asset Analysis: Extract insights from unstructured content using Bedrock Data Automation
+- Support for Multiple Content Types: Process documents, images, videos, and audio files
+- Integration with Amazon S3: Seamlessly upload and download assets and results
+
+[Learn more about the AWS Bedrock Data Automation MCP Server](servers/aws-bedrock-data-automation-mcp-server.md)
+
 ### Core MCP Server
 
 The Core MCP Server manages and coordinates other MCP servers in your environment, providing automatic installation, configuration, and management.
