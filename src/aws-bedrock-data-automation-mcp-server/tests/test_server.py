@@ -15,7 +15,8 @@ async def test_get_projects_tool():
     mock_projects = [{'projectArn': 'test-arn', 'name': 'test-project'}]
 
     with patch(
-        'awslabs.aws_bedrock_data_automation_mcp_server.server.list_projects', new=AsyncMock(return_value=mock_projects)
+        'awslabs.aws_bedrock_data_automation_mcp_server.server.list_projects',
+        new=AsyncMock(return_value=mock_projects),
     ):
         result = await get_projects_tool()
         assert result == mock_projects
@@ -24,10 +25,15 @@ async def test_get_projects_tool():
 @pytest.mark.asyncio
 async def test_get_project_details_tool():
     """Test the get_project_details_tool function."""
-    mock_project = {'projectArn': 'test-arn', 'name': 'test-project', 'description': 'Test project description'}
+    mock_project = {
+        'projectArn': 'test-arn',
+        'name': 'test-project',
+        'description': 'Test project description',
+    }
 
     with patch(
-        'awslabs.aws_bedrock_data_automation_mcp_server.server.get_project', new=AsyncMock(return_value=mock_project)
+        'awslabs.aws_bedrock_data_automation_mcp_server.server.get_project',
+        new=AsyncMock(return_value=mock_project),
     ):
         result = await get_project_details_tool(projectArn='test-arn')
         assert result == mock_project
@@ -54,9 +60,12 @@ async def test_analyze_asset_tool_with_project_arn():
     mock_invoke = AsyncMock(return_value=mock_results)
 
     with patch(
-        'awslabs.aws_bedrock_data_automation_mcp_server.server.invoke_data_automation_and_get_results', new=mock_invoke
+        'awslabs.aws_bedrock_data_automation_mcp_server.server.invoke_data_automation_and_get_results',
+        new=mock_invoke,
     ):
-        result = await analyze_asset_tool(assetPath='/path/to/asset.pdf', projectArn='test-project-arn')
+        result = await analyze_asset_tool(
+            assetPath='/path/to/asset.pdf', projectArn='test-project-arn'
+        )
 
         mock_invoke.assert_called_once_with('/path/to/asset.pdf', 'test-project-arn')
         assert result == mock_results

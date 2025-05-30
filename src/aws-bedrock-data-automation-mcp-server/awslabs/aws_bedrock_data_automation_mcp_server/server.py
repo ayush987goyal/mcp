@@ -46,11 +46,11 @@ async def get_projects_tool() -> dict:
     """Get a list of data automation projects.
 
     Returns:
-        A list of data automation projects.
+        A dict containing a list of data automation projects.
     """
     try:
         projects = await list_projects()
-        return projects
+        return {'projects': projects}
     except Exception as e:
         logger.error(f'Error listing projects: {e}')
         raise ValueError(f'Error listing projects: {str(e)}')

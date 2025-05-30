@@ -30,7 +30,9 @@ class TestInit:
 
         # Check that __version__ follows semantic versioning (major.minor.patch)
         version_pattern = r'^\d+\.\d+\.\d+$'
-        assert re.match(version_pattern, awslabs.aws_bedrock_data_automation_mcp_server.__version__), (
+        assert re.match(
+            version_pattern, awslabs.aws_bedrock_data_automation_mcp_server.__version__
+        ), (
             f"Version '{awslabs.aws_bedrock_data_automation_mcp_server.__version__}' does not follow semantic versioning"
         )
 

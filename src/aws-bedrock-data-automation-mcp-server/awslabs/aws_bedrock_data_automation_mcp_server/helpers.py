@@ -209,8 +209,12 @@ async def invoke_data_automation_and_get_results(
 
     # Extract output paths
     try:
-        standard_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get('standard_output_path')
-        custom_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get('custom_output_path')
+        standard_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get(
+            'standard_output_path'
+        )
+        custom_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get(
+            'custom_output_path'
+        )
     except (KeyError, IndexError):
         standard_output_uri = None
         custom_output_uri = None
@@ -218,12 +222,16 @@ async def invoke_data_automation_and_get_results(
     if not standard_output_uri and not custom_output_uri:
         return None
 
-    result = {'standardOutput': None, 'customOutput': None}
+    result: Dict[str, Optional[Dict[str, Any]]] = {'standardOutput': None, 'customOutput': None}
 
     if standard_output_uri:
-        result['standardOutput'] = await download_from_s3(standard_output_uri)
+        standard_output = await download_from_s3(standard_output_uri)
+        if standard_output is not None:
+            result['standardOutput'] = standard_output
 
     if custom_output_uri:
-        result['customOutput'] = await download_from_s3(custom_output_uri)
+        custom_output = await download_from_s3(custom_output_uri)
+        if custom_output is not None:
+            result['customOutput'] = custom_output
 
     return result
