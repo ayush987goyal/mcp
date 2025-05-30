@@ -19,7 +19,7 @@ async def test_get_projects_tool():
         new=AsyncMock(return_value=mock_projects),
     ):
         result = await get_projects_tool()
-        assert result == mock_projects
+        assert result == {'projects': mock_projects}
 
 
 @pytest.mark.asyncio
