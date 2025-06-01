@@ -6,6 +6,7 @@ import pytest
 from awslabs.aws_bedrock_data_automation_mcp_server.helpers import (
     download_from_s3,
     get_account_id,
+    get_aws_session,
     get_bedrock_data_automation_client,
     get_bedrock_data_automation_runtime_client,
     get_bucket_and_key_from_s3_uri,
@@ -60,27 +61,75 @@ def test_get_profile_arn():
         assert get_profile_arn() is None
 
 
+def test_get_aws_session():
+    """Test the get_aws_session function."""
+    # Test with AWS_PROFILE set
+    with patch.dict(os.environ, {'AWS_PROFILE': 'test-profile'}):
+        with patch('boto3.Session') as mock_session:
+            get_aws_session()
+            mock_session.assert_called_once_with(
+                profile_name='test-profile', region_name=get_region()
+            )
+
+    # Test without AWS_PROFILE set
+    with patch.dict(os.environ, {}, clear=True):
+        with patch('boto3.Session') as mock_session:
+            get_aws_session()
+            mock_session.assert_called_once_with(region_name=get_region())
+
+    # Test with custom region
+    with patch('boto3.Session') as mock_session:
+        get_aws_session(region_name='us-west-2')
+        mock_session.assert_called_once_with(region_name='us-west-2')
+
+
 def test_get_bedrock_data_automation_client():
     """Test the get_bedrock_data_automation_client function."""
-    with patch('boto3.client') as mock_client:
-        get_bedrock_data_automation_client()
-        mock_client.assert_called_once_with('bedrock-data-automation', region_name=get_region())
+    mock_session = MagicMock()
+    mock_client = MagicMock()
+    mock_session.client.return_value = mock_client
+
+    with patch(
+        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_aws_session',
+        return_value=mock_session,
+    ):
+        client = get_bedrock_data_automation_client()
+        mock_session.client.assert_called_once_with(
+            'bedrock-data-automation', region_name=get_region()
+        )
+        assert client == mock_client
 
 
 def test_get_bedrock_data_automation_runtime_client():
     """Test the get_bedrock_data_automation_runtime_client function."""
-    with patch('boto3.client') as mock_client:
-        get_bedrock_data_automation_runtime_client()
-        mock_client.assert_called_once_with(
+    mock_session = MagicMock()
+    mock_client = MagicMock()
+    mock_session.client.return_value = mock_client
+
+    with patch(
+        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_aws_session',
+        return_value=mock_session,
+    ):
+        client = get_bedrock_data_automation_runtime_client()
+        mock_session.client.assert_called_once_with(
             'bedrock-data-automation-runtime', region_name=get_region()
         )
+        assert client == mock_client
 
 
 def test_get_s3_client():
     """Test the get_s3_client function."""
-    with patch('boto3.client') as mock_client:
-        get_s3_client()
-        mock_client.assert_called_once_with('s3', region_name=get_region())
+    mock_session = MagicMock()
+    mock_client = MagicMock()
+    mock_session.client.return_value = mock_client
+
+    with patch(
+        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_aws_session',
+        return_value=mock_session,
+    ):
+        client = get_s3_client()
+        mock_session.client.assert_called_once_with('s3', region_name=get_region())
+        assert client == mock_client
 
 
 @pytest.mark.asyncio

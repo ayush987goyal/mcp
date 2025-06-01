@@ -54,19 +54,23 @@ or docker after a successful `docker build -t awslabs/aws-bedrock-data-automatio
         "--rm",
         "--interactive",
         "--env",
-        "AWS_REGION=us-east-1",
+        "AWS_PROFILE",
         "--env",
-        "AWS_BUCKET_NAME=your-s3-bucket-name",
+        "AWS_REGION",
         "--env",
-        "AWS_ACCOUNT_ID=your-aws-account-id",
+        "AWS_BUCKET_NAME",
         "--env",
-        "FASTMCP_LOG_LEVEL=ERROR",
+        "AWS_ACCOUNT_ID",
+        "--env",
+        "FASTMCP_LOG_LEVEL",
         "awslabs/aws-bedrock-data-automation-mcp-server:latest"
       ],
       "env": {
-        "AWS_ACCESS_KEY_ID": "your-access-key",
-        "AWS_SECRET_ACCESS_KEY": "your-secret-key",
-        "AWS_SESSION_TOKEN": "your-session-token"
+        "AWS_PROFILE": "your-aws-profile",
+        "AWS_REGION": "us-east-1",
+        "AWS_BUCKET_NAME": "your-s3-bucket-name",
+        "AWS_ACCOUNT_ID": "your-aws-account-id",
+        "FASTMCP_LOG_LEVEL": "ERROR"
       },
       "disabled": false,
       "autoApprove": []
@@ -81,9 +85,20 @@ or docker after a successful `docker build -t awslabs/aws-bedrock-data-automatio
 - `AWS_REGION`: AWS region to use (default: us-east-1)
 - `AWS_BUCKET_NAME`: S3 bucket name for storing assets and results
 - `AWS_ACCOUNT_ID`: Your AWS account ID
-- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`: Explicit AWS credentials (alternative to AWS_PROFILE)
-- `AWS_SESSION_TOKEN`: Session token for temporary credentials (used with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
 - `FASTMCP_LOG_LEVEL`: Logging level (ERROR, WARNING, INFO, DEBUG)
+
+## AWS Authentication
+
+The server uses the AWS profile specified in the `AWS_PROFILE` environment variable. If not provided, it defaults to the default credential provider chain.
+
+```json
+"env": {
+  "AWS_PROFILE": "your-aws-profile",
+  "AWS_REGION": "us-east-1"
+}
+```
+
+Make sure the AWS profile has permissions to access Amazon Bedrock Data Automation services. The MCP server creates a boto3 session using the specified profile to authenticate with AWS services.
 
 ## Tools
 

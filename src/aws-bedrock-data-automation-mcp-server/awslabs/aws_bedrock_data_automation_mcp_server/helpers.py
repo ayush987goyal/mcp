@@ -25,6 +25,19 @@ def get_bucket_name() -> Optional[str]:
     return os.environ.get('AWS_BUCKET_NAME')
 
 
+def get_aws_session(region_name=None):
+    """Create an AWS session using AWS Profile or default credentials."""
+    profile_name = os.environ.get('AWS_PROFILE')
+    region = region_name or get_region()
+
+    if profile_name:
+        logger.debug(f'Using AWS profile: {profile_name}')
+        return boto3.Session(profile_name=profile_name, region_name=region)
+    else:
+        logger.debug('Using default AWS credential chain')
+        return boto3.Session(region_name=region)
+
+
 def get_profile_arn() -> Optional[str]:
     """Get the Bedrock Data Automation profile ARN."""
     region = get_region()
@@ -36,17 +49,20 @@ def get_profile_arn() -> Optional[str]:
 
 def get_bedrock_data_automation_client():
     """Get a Bedrock Data Automation client."""
-    return boto3.client('bedrock-data-automation', region_name=get_region())
+    session = get_aws_session()
+    return session.client('bedrock-data-automation', region_name=get_region())
 
 
 def get_bedrock_data_automation_runtime_client():
     """Get a Bedrock Data Automation Runtime client."""
-    return boto3.client('bedrock-data-automation-runtime', region_name=get_region())
+    session = get_aws_session()
+    return session.client('bedrock-data-automation-runtime', region_name=get_region())
 
 
 def get_s3_client():
     """Get an S3 client."""
-    return boto3.client('s3', region_name=get_region())
+    session = get_aws_session()
+    return session.client('s3', region_name=get_region())
 
 
 async def list_projects() -> list:
