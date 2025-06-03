@@ -37,7 +37,8 @@ def test_get_account_id():
         assert get_account_id() == '123456789012'
 
     with patch.dict(os.environ, {}, clear=True):
-        assert get_account_id() is None
+        with pytest.raises(ValueError, match='AWS_ACCOUNT_ID environment variable is not set'):
+            get_account_id()
 
 
 def test_get_bucket_name():
@@ -46,7 +47,8 @@ def test_get_bucket_name():
         assert get_bucket_name() == 'test-bucket'
 
     with patch.dict(os.environ, {}, clear=True):
-        assert get_bucket_name() is None
+        with pytest.raises(ValueError, match='AWS_BUCKET_NAME environment variable is not set'):
+            get_bucket_name()
 
 
 def test_get_profile_arn():
@@ -58,7 +60,8 @@ def test_get_profile_arn():
         )
 
     with patch.dict(os.environ, {'AWS_REGION': 'us-west-2'}, clear=True):
-        assert get_profile_arn() is None
+        with pytest.raises(ValueError, match='AWS_ACCOUNT_ID environment variable is not set'):
+            get_profile_arn()
 
 
 def test_get_aws_session():
@@ -248,8 +251,8 @@ async def test_download_from_s3_error():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_s3_client',
         return_value=mock_client,
     ):
-        result = await download_from_s3('s3://test-bucket/path/to/file.json')
-        assert result is None
+        with pytest.raises(ValueError, match='Error downloading from S3: Test error'):
+            await download_from_s3('s3://test-bucket/path/to/file.json')
 
 
 @pytest.mark.asyncio
@@ -409,7 +412,7 @@ async def test_invoke_data_automation_and_get_results_no_profile_arn():
         with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}, clear=True):
             with pytest.raises(
                 ValueError,
-                match='Could not determine profile ARN. Make sure AWS_ACCOUNT_ID is set.',
+                match='AWS_ACCOUNT_ID environment variable is not set',
             ):
                 await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
@@ -450,8 +453,8 @@ async def test_invoke_data_automation_and_get_results_job_failed():
                 mock_runtime.get_data_automation_status.return_value = {'status': 'FAILED'}
                 mock_get_runtime.return_value = mock_runtime
 
-                result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
-                assert result is None
+                with pytest.raises(ValueError, match='Data Automation failed: .*'):
+                    await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -479,8 +482,8 @@ async def test_invoke_data_automation_and_get_results_no_output_uri():
                 }
                 mock_get_runtime.return_value = mock_runtime
 
-                result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
-                assert result is None
+                with pytest.raises(ValueError, match='Data Automation failed: .*'):
+                    await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -513,8 +516,8 @@ async def test_invoke_data_automation_and_get_results_no_job_metadata():
                     'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
                     new=AsyncMock(return_value=None),
                 ):
-                    result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
-                    assert result is None
+                    with pytest.raises(TypeError, match="'NoneType' object is not subscriptable"):
+                        await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -547,8 +550,11 @@ async def test_invoke_data_automation_and_get_results_invalid_metadata():
                     'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
                     new=AsyncMock(return_value={'invalid': 'structure'}),
                 ):
-                    result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
-                    assert result is None
+                    with pytest.raises(
+                        ValueError,
+                        match='Data Automation failed. No standard or custom output found',
+                    ):
+                        await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -591,8 +597,11 @@ async def test_invoke_data_automation_and_get_results_no_output_paths():
                         }
                     ),
                 ):
-                    result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
-                    assert result is None
+                    with pytest.raises(
+                        ValueError,
+                        match='Data Automation failed. No standard or custom output found',
+                    ):
+                        await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio

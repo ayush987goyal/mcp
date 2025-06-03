@@ -72,17 +72,6 @@ async def test_analyze_asset_tool_with_project_arn():
 
 
 @pytest.mark.asyncio
-async def test_analyze_asset_tool_with_none_result():
-    """Test the analyze_asset_tool function when the result is None."""
-    with patch(
-        'awslabs.aws_bedrock_data_automation_mcp_server.server.invoke_data_automation_and_get_results',
-        new=AsyncMock(return_value=None),
-    ):
-        with pytest.raises(ValueError, match='Data automation job failed or returned no results'):
-            await analyze_asset_tool(assetPath='/path/to/asset.pdf')
-
-
-@pytest.mark.asyncio
 async def test_get_projects_tool_error():
     """Test the get_projects_tool function when an error occurs."""
     with patch(
