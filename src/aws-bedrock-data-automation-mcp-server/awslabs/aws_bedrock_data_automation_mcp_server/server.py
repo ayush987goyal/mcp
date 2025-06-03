@@ -18,7 +18,8 @@ from awslabs.aws_bedrock_data_automation_mcp_server.helpers import (
 )
 from loguru import logger
 from mcp.server.fastmcp import FastMCP
-from typing import Optional
+from pydantic import Field
+from typing import Annotated
 
 
 mcp = FastMCP(
@@ -45,6 +46,29 @@ mcp = FastMCP(
 async def get_projects_tool() -> dict:
     """Get a list of data automation projects.
 
+    ## Usage
+
+    Use this tool to retrieve a list of all available data automation projects in your account.
+    This is typically the first step when working with data automation to discover what projects
+    are available for use.
+
+    ## Example
+
+    ```python
+    # Get all available data automation projects
+    projects = await getprojects()
+    ```
+
+    ## Output Format
+
+    The output is a dictionary containing:
+    - `projects`: A list of project objects, each with:
+      - `projectArn`: The Amazon Resource Name (ARN) of the project
+      - `projectName`: The name of the project
+      - `projectStage`: The stage of the project (e.g., DRAFT, PUBLISHED)
+      - `creationTime`: When the project was created
+      - `lastModifiedTime`: When the project was last modified
+
     Returns:
         A dict containing a list of data automation projects.
     """
@@ -58,9 +82,32 @@ async def get_projects_tool() -> dict:
 
 @mcp.tool(name='getprojectdetails')
 async def get_project_details_tool(
-    projectArn: str,
+    projectArn: Annotated[str, Field(description='The ARN of the project')],
 ) -> dict:
     """Get details of a data automation project.
+
+    ## Usage
+
+    Use this tool to retrieve detailed information about a specific data automation project
+    after you've identified its ARN using the `getprojects` tool.
+
+    ## Example
+
+    ```python
+    # Get details for a specific project
+    project_details = await getprojectdetails(
+        projectArn='arn:aws:bedrock:us-west-2:123456789012:data-automation-project/my-project'
+    )
+    ```
+
+    ## Output Format
+
+    The output is a dictionary containing comprehensive project details including:
+    - Basic project information (name, ARN, stage)
+    - Configuration settings
+    - Input/output specifications
+    - Associated blueprints
+    - Creation and modification timestamps
 
     Args:
         projectArn: The ARN of the project.
@@ -78,13 +125,49 @@ async def get_project_details_tool(
 
 @mcp.tool(name='analyzeasset')
 async def analyze_asset_tool(
-    assetPath: str,
-    projectArn: Optional[str] = None,
+    assetPath: Annotated[str, Field(description='The path to the asset')],
+    projectArn: Annotated[
+        str,
+        Field(description='The ARN of the project. Uses default public project if not provided'),
+    ] = None,
 ) -> dict:
     """Analyze an asset using a data automation project.
 
     This tool extracts insights from unstructured content (documents, images, videos, audio)
     using Amazon Bedrock Data Automation.
+
+    ## Usage
+
+    Use this tool to analyze various types of assets (documents, images, videos, audio files)
+    using a data automation project. You can specify a particular project to use for analysis
+    or let the system use a default public project if none is provided.
+
+    ## Supported Asset Types
+
+    - Documents: PDF, DOCX, TXT, etc.
+    - Images: JPG, PNG, etc.
+    - Videos: MP4, MOV, etc.
+    - Audio: MP3, WAV, etc.
+
+    ## Examples
+
+    ```python
+    # Analyze a document using the default public project
+    results = await analyzeasset(assetPath='/path/to/document.pdf')
+
+    # Analyze an image using a specific project
+    results = await analyzeasset(
+        assetPath='/path/to/image.jpg',
+        projectArn='arn:aws:bedrock:us-west-2:123456789012:data-automation-project/my-project',
+    )
+    ```
+
+    ## Output Format
+
+    The output is a dictionary containing the analysis results, which vary based on:
+    - The type of asset being analyzed
+    - The capabilities of the data automation project used
+    - The specific insights extracted (text, entities, sentiment, etc.)
 
     Args:
         assetPath: The path to the asset.
@@ -95,8 +178,6 @@ async def analyze_asset_tool(
     """
     try:
         results = await invoke_data_automation_and_get_results(assetPath, projectArn)
-        if results is None:
-            raise ValueError('Data automation job failed or returned no results')
         return results
     except Exception as e:
         logger.error(f'Error analyzing asset: {e}')

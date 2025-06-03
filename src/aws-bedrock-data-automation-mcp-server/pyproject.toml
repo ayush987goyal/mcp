@@ -1,6 +1,6 @@
 [project]
 name = "awslabs.aws-bedrock-data-automation-mcp-server"
-version = "0.0.0"
+version = "0.0.1"
 description = "An AWS Labs Model Context Protocol (MCP) server for Bedrock Data Automation"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,7 +15,7 @@ license-files = ["LICENSE", "NOTICE" ]
 authors = [
     {name = "Amazon Web Services"},
     {name = "AWSLabs MCP", email="203918161+awslabs-mcp@users.noreply.github.com"},
-    {name = "AWSLabs MCP", email="203918161+awslabs-mcp@users.noreply.github.com"},
+    {name = "Ayush Goyal", email="ayush987goyal@gmail.com"},
 ]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",

@@ -17,12 +17,18 @@ def get_region() -> str:
 
 def get_account_id() -> Optional[str]:
     """Get the AWS account ID from environment variables."""
-    return os.environ.get('AWS_ACCOUNT_ID')
+    account_id = os.environ.get('AWS_ACCOUNT_ID')
+    if not account_id:
+        raise ValueError('AWS_ACCOUNT_ID environment variable is not set')
+    return account_id
 
 
 def get_bucket_name() -> Optional[str]:
     """Get the S3 bucket name from environment variables."""
-    return os.environ.get('AWS_BUCKET_NAME')
+    bucket_name = os.environ.get('AWS_BUCKET_NAME')
+    if not bucket_name:
+        raise ValueError('AWS_BUCKET_NAME environment variable is not set')
+    return bucket_name
 
 
 def get_aws_session(region_name=None):
@@ -42,8 +48,6 @@ def get_profile_arn() -> Optional[str]:
     """Get the Bedrock Data Automation profile ARN."""
     region = get_region()
     account_id = get_account_id()
-    if not account_id:
-        return None
     return f'arn:aws:bedrock:{region}:{account_id}:data-automation-profile/us.data-automation-v1'
 
 
@@ -99,9 +103,6 @@ async def upload_to_s3(asset_path: str) -> str:
         ValueError: If the bucket name is not set or the asset does not exist.
     """
     bucket_name = get_bucket_name()
-    if not bucket_name:
-        raise ValueError('AWS_BUCKET_NAME environment variable is not set')
-
     asset_path_obj = Path(asset_path)
     if not asset_path_obj.exists():
         raise ValueError(f'Asset at path {asset_path} does not exist')
@@ -151,8 +152,7 @@ async def download_from_s3(s3_uri: str) -> Optional[Dict[str, Any]]:
         content = response['Body'].read().decode('utf-8')
         return json.loads(content)
     except Exception as e:
-        logger.error(f'Error downloading from S3: {e}')
-        return None
+        raise ValueError(f'Error downloading from S3: {e}')
 
 
 async def invoke_data_automation_and_get_results(
@@ -179,13 +179,7 @@ async def invoke_data_automation_and_get_results(
     logger.info(f'Using assetUri: {asset_uri} and projectArn: {project_arn}')
 
     profile_arn = get_profile_arn()
-    if not profile_arn:
-        raise ValueError('Could not determine profile ARN. Make sure AWS_ACCOUNT_ID is set.')
-
     bucket_name = get_bucket_name()
-    if not bucket_name:
-        raise ValueError('AWS_BUCKET_NAME environment variable is not set')
-
     runtime_client = get_bedrock_data_automation_runtime_client()
 
     # Invoke the data automation job
@@ -213,13 +207,10 @@ async def invoke_data_automation_and_get_results(
     logger.info(f'Data Automation completed: {get_response}')
 
     if status != 'Success' or not get_response.get('outputConfiguration', {}).get('s3Uri'):
-        return None
+        raise ValueError(f'Data Automation failed: {get_response}')
 
     output_uri = get_response['outputConfiguration']['s3Uri']
     job_metadata = await download_from_s3(output_uri)
-
-    if not job_metadata:
-        return None
 
     logger.info(f'Job metadata: {job_metadata}')
 
@@ -228,15 +219,18 @@ async def invoke_data_automation_and_get_results(
         standard_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get(
             'standard_output_path'
         )
+    except (KeyError, IndexError):
+        standard_output_uri = None
+
+    try:
         custom_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get(
             'custom_output_path'
         )
     except (KeyError, IndexError):
-        standard_output_uri = None
         custom_output_uri = None
 
     if not standard_output_uri and not custom_output_uri:
-        return None
+        raise ValueError('Data Automation failed. No standard or custom output found')
 
     result: Dict[str, Optional[Dict[str, Any]]] = {'standardOutput': None, 'customOutput': None}
 

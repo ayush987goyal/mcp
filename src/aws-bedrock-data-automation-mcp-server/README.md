@@ -17,6 +17,11 @@ A Model Context Protocol (MCP) server for Amazon Bedrock Data Automation that en
    - You need an AWS account with Amazon Bedrock Data Automation enabled
    - Configure AWS credentials with `aws configure` or environment variables
    - Ensure your IAM role/user has permissions to use Amazon Bedrock Data Automation
+4. Create an AWS S3 Bucket
+   - Example AWS CLI command to create the bucket
+   - ```bash
+      aws s3 create-bucket <bucket-name>
+      ```
 
 ## Installation
 
@@ -98,7 +103,7 @@ The server uses the AWS profile specified in the `AWS_PROFILE` environment varia
 }
 ```
 
-Make sure the AWS profile has permissions to access Amazon Bedrock Data Automation services. The MCP server creates a boto3 session using the specified profile to authenticate with AWS services.
+Make sure the AWS profile has permissions to access Amazon Bedrock Data Automation services. The MCP server creates a boto3 session using the specified profile to authenticate with AWS services. Amazon Bedrock Data Automation services is currently available in the following regions: us-east-1 and us-west-2.
 
 ## Tools
 
