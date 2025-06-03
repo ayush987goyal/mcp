@@ -516,7 +516,10 @@ async def test_invoke_data_automation_and_get_results_no_job_metadata():
                     'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
                     new=AsyncMock(return_value=None),
                 ):
-                    with pytest.raises(TypeError, match="'NoneType' object is not subscriptable"):
+                    with pytest.raises(
+                        ValueError,
+                        match='Data Automation failed. No standard or custom output found',
+                    ):
                         await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 

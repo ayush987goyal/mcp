@@ -127,7 +127,7 @@ async def get_project_details_tool(
 async def analyze_asset_tool(
     assetPath: Annotated[str, Field(description='The path to the asset')],
     projectArn: Annotated[
-        str,
+        str | None,
         Field(description='The ARN of the project. Uses default public project if not provided'),
     ] = None,
 ) -> dict:
@@ -178,7 +178,7 @@ async def analyze_asset_tool(
     """
     try:
         results = await invoke_data_automation_and_get_results(assetPath, projectArn)
-        return results
+        return results if results is not None else {}
     except Exception as e:
         logger.error(f'Error analyzing asset: {e}')
         raise ValueError(f'Error analyzing asset: {str(e)}')

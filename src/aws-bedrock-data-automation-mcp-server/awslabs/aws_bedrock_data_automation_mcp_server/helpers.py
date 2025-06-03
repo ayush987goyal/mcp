@@ -215,19 +215,23 @@ async def invoke_data_automation_and_get_results(
     logger.info(f'Job metadata: {job_metadata}')
 
     # Extract output paths
-    try:
-        standard_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get(
-            'standard_output_path'
-        )
-    except (KeyError, IndexError):
-        standard_output_uri = None
+    standard_output_uri = None
+    custom_output_uri = None
 
-    try:
-        custom_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get(
-            'custom_output_path'
-        )
-    except (KeyError, IndexError):
-        custom_output_uri = None
+    if job_metadata is not None:
+        try:
+            standard_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get(
+                'standard_output_path'
+            )
+        except (KeyError, IndexError):
+            standard_output_uri = None
+
+        try:
+            custom_output_uri = job_metadata['output_metadata'][0]['segment_metadata'][0].get(
+                'custom_output_path'
+            )
+        except (KeyError, IndexError):
+            custom_output_uri = None
 
     if not standard_output_uri and not custom_output_uri:
         raise ValueError('Data Automation failed. No standard or custom output found')
