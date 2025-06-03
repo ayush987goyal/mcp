@@ -31,6 +31,15 @@ def get_bucket_name() -> Optional[str]:
     return bucket_name
 
 
+def get_base_dir() -> Optional[str]:
+    """Get the base directory from environment variables.
+
+    Returns:
+        The base directory path if set, None otherwise.
+    """
+    return os.environ.get('BASE_DIR')
+
+
 def get_aws_session(region_name=None):
     """Create an AWS session using AWS Profile or default credentials."""
     profile_name = os.environ.get('AWS_PROFILE')
@@ -90,6 +99,39 @@ async def get_project(project_arn: str) -> Dict[str, Any]:
     return response.get('project', {})
 
 
+def sanitize_path(file_path: str, base_dir: Optional[str] = None) -> Path:
+    """Sanitize and validate a file path to prevent path traversal attacks.
+
+    Args:
+        file_path: The input file path to sanitize
+        base_dir: Optional base directory to restrict paths to
+
+    Returns:
+        Path: A sanitized Path object
+
+    Raises:
+        ValueError: If the path is invalid or attempts to traverse outside base_dir
+    """
+    # Convert to absolute path if base_dir is provided
+    if base_dir:
+        base_path = Path(base_dir).resolve()
+        try:
+            # Resolve the path relative to base_dir
+            full_path = (base_path / file_path).resolve()
+            # Check if the resolved path is still within base_dir
+            if not str(full_path).startswith(str(base_path)):
+                raise ValueError(f'Path {file_path} attempts to traverse outside base directory')
+            return full_path
+        except Exception as e:
+            raise ValueError(f'Invalid path: {str(e)}')
+
+    # If no base_dir, just sanitize the path
+    try:
+        return Path(file_path).resolve()
+    except Exception as e:
+        raise ValueError(f'Invalid path: {str(e)}')
+
+
 async def upload_to_s3(asset_path: str) -> str:
     """Upload an asset to S3.
 
@@ -103,7 +145,7 @@ async def upload_to_s3(asset_path: str) -> str:
         ValueError: If the bucket name is not set or the asset does not exist.
     """
     bucket_name = get_bucket_name()
-    asset_path_obj = Path(asset_path)
+    asset_path_obj = sanitize_path(asset_path, get_base_dir())
     if not asset_path_obj.exists():
         raise ValueError(f'Asset at path {asset_path} does not exist')
 

@@ -7,6 +7,7 @@ from awslabs.aws_bedrock_data_automation_mcp_server.helpers import (
     download_from_s3,
     get_account_id,
     get_aws_session,
+    get_base_dir,
     get_bedrock_data_automation_client,
     get_bedrock_data_automation_runtime_client,
     get_bucket_and_key_from_s3_uri,
@@ -17,8 +18,10 @@ from awslabs.aws_bedrock_data_automation_mcp_server.helpers import (
     get_s3_client,
     invoke_data_automation_and_get_results,
     list_projects,
+    sanitize_path,
     upload_to_s3,
 )
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 
@@ -49,6 +52,15 @@ def test_get_bucket_name():
     with patch.dict(os.environ, {}, clear=True):
         with pytest.raises(ValueError, match='AWS_BUCKET_NAME environment variable is not set'):
             get_bucket_name()
+
+
+def test_get_base_dir():
+    """Test the get_base_dir function."""
+    with patch.dict(os.environ, {'BASE_DIR': '/test/base/dir'}):
+        assert get_base_dir() == '/test/base/dir'
+
+    with patch.dict(os.environ, {}, clear=True):
+        assert get_base_dir() is None
 
 
 def test_get_profile_arn():
@@ -220,6 +232,34 @@ def test_get_bucket_and_key_from_s3_uri():
     bucket, key = get_bucket_and_key_from_s3_uri('s3://test-bucket/path/to/file.txt')
     assert bucket == 'test-bucket'
     assert key == 'path/to/file.txt'
+
+
+def test_sanitize_path():
+    """Test the sanitize_path function."""
+    # Test with no base_dir
+    path = sanitize_path('/path/to/file.txt')
+    assert path == Path('/path/to/file.txt').resolve()
+
+    # Test with base_dir
+    with patch('pathlib.Path.resolve', return_value=Path('/base/dir/path/to/file.txt')):
+        path = sanitize_path('path/to/file.txt', '/base/dir')
+        assert path == Path('/base/dir/path/to/file.txt')
+
+    # Test path traversal attempt
+    with patch(
+        'pathlib.Path.resolve',
+        side_effect=[Path('/base/dir').resolve(), Path('/outside/dir').resolve()],
+    ):
+        with pytest.raises(ValueError, match='attempts to traverse outside base directory'):
+            sanitize_path('../../../outside/dir', '/base/dir')
+
+
+def test_sanitize_path_invalid_path():
+    """Test the sanitize_path function with an invalid path."""
+    # Test invalid path without base_dir
+    with patch('pathlib.Path.resolve', side_effect=Exception('Invalid path')):
+        with pytest.raises(ValueError, match='Invalid path: Invalid path'):
+            sanitize_path('invalid/path')
 
 
 @pytest.mark.asyncio

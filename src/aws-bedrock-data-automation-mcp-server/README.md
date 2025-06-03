@@ -38,6 +38,7 @@ Here are some ways you can work with MCP across AWS, and we'll be adding support
         "AWS_REGION": "us-east-1",
         "AWS_BUCKET_NAME": "your-s3-bucket-name",
         "AWS_ACCOUNT_ID": "your-aws-account-id",
+        "BASE_DIR": "/path/to/base/directory",
         "FASTMCP_LOG_LEVEL": "ERROR"
       },
       "disabled": false,
@@ -67,6 +68,8 @@ or docker after a successful `docker build -t awslabs/aws-bedrock-data-automatio
         "--env",
         "AWS_ACCOUNT_ID",
         "--env",
+        "BASE_DIR",
+        "--env",
         "FASTMCP_LOG_LEVEL",
         "awslabs/aws-bedrock-data-automation-mcp-server:latest"
       ],
@@ -75,6 +78,7 @@ or docker after a successful `docker build -t awslabs/aws-bedrock-data-automatio
         "AWS_REGION": "us-east-1",
         "AWS_BUCKET_NAME": "your-s3-bucket-name",
         "AWS_ACCOUNT_ID": "your-aws-account-id",
+        "BASE_DIR": "/path/to/base/directory",
         "FASTMCP_LOG_LEVEL": "ERROR"
       },
       "disabled": false,
@@ -90,6 +94,7 @@ or docker after a successful `docker build -t awslabs/aws-bedrock-data-automatio
 - `AWS_REGION`: AWS region to use (default: us-east-1)
 - `AWS_BUCKET_NAME`: S3 bucket name for storing assets and results
 - `AWS_ACCOUNT_ID`: Your AWS account ID
+- `BASE_DIR`: Base directory for file operations (optional)
 - `FASTMCP_LOG_LEVEL`: Logging level (ERROR, WARNING, INFO, DEBUG)
 
 ## AWS Authentication
