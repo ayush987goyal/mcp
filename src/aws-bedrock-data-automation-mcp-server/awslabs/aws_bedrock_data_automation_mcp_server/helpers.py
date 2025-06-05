@@ -1,3 +1,18 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
 """Helper functions for the AWS Bedrock Data Automation MCP Server."""
 
 import asyncio
@@ -15,12 +30,16 @@ def get_region() -> str:
     return os.environ.get('AWS_REGION', 'us-east-1')
 
 
-def get_account_id() -> Optional[str]:
-    """Get the AWS account ID from environment variables."""
-    account_id = os.environ.get('AWS_ACCOUNT_ID')
-    if not account_id:
-        raise ValueError('AWS_ACCOUNT_ID environment variable is not set')
-    return account_id
+def get_account_id() -> str:
+    """Get the AWS account ID using STS get_caller_identity."""
+    session = get_aws_session()
+    sts_client = session.client('sts', region_name=get_region())
+    try:
+        response = sts_client.get_caller_identity()
+        return response['Account']
+    except Exception as e:
+        logger.error(f'Failed to get AWS account ID: {e}')
+        raise ValueError(f'Failed to get AWS account ID: {str(e)}')
 
 
 def get_bucket_name() -> Optional[str]:

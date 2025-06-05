@@ -37,7 +37,6 @@ Here are some ways you can work with MCP across AWS, and we'll be adding support
         "AWS_PROFILE": "your-aws-profile",
         "AWS_REGION": "us-east-1",
         "AWS_BUCKET_NAME": "your-s3-bucket-name",
-        "AWS_ACCOUNT_ID": "your-aws-account-id",
         "BASE_DIR": "/path/to/base/directory",
         "FASTMCP_LOG_LEVEL": "ERROR"
       },
@@ -66,8 +65,6 @@ or docker after a successful `docker build -t awslabs/aws-bedrock-data-automatio
         "--env",
         "AWS_BUCKET_NAME",
         "--env",
-        "AWS_ACCOUNT_ID",
-        "--env",
         "BASE_DIR",
         "--env",
         "FASTMCP_LOG_LEVEL",
@@ -77,7 +74,6 @@ or docker after a successful `docker build -t awslabs/aws-bedrock-data-automatio
         "AWS_PROFILE": "your-aws-profile",
         "AWS_REGION": "us-east-1",
         "AWS_BUCKET_NAME": "your-s3-bucket-name",
-        "AWS_ACCOUNT_ID": "your-aws-account-id",
         "BASE_DIR": "/path/to/base/directory",
         "FASTMCP_LOG_LEVEL": "ERROR"
       },
@@ -93,7 +89,6 @@ or docker after a successful `docker build -t awslabs/aws-bedrock-data-automatio
 - `AWS_PROFILE`: AWS CLI profile to use for credentials
 - `AWS_REGION`: AWS region to use (default: us-east-1)
 - `AWS_BUCKET_NAME`: S3 bucket name for storing assets and results
-- `AWS_ACCOUNT_ID`: Your AWS account ID
 - `BASE_DIR`: Base directory for file operations (optional)
 - `FASTMCP_LOG_LEVEL`: Logging level (ERROR, WARNING, INFO, DEBUG)
 

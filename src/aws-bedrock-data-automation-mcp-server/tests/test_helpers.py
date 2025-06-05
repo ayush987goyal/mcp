@@ -36,12 +36,35 @@ def test_get_region():
 
 def test_get_account_id():
     """Test the get_account_id function."""
-    with patch.dict(os.environ, {'AWS_ACCOUNT_ID': '123456789012'}):
-        assert get_account_id() == '123456789012'
+    mock_session = MagicMock()
+    mock_sts_client = MagicMock()
+    mock_sts_client.get_caller_identity.return_value = {'Account': '123456789012'}
+    mock_session.client.return_value = mock_sts_client
 
-    with patch.dict(os.environ, {}, clear=True):
-        with pytest.raises(ValueError, match='AWS_ACCOUNT_ID environment variable is not set'):
+    with patch(
+        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_aws_session',
+        return_value=mock_session,
+    ):
+        assert get_account_id() == '123456789012'
+        mock_session.client.assert_called_once_with('sts', region_name=get_region())
+        mock_sts_client.get_caller_identity.assert_called_once()
+
+
+def test_get_account_id_exception():
+    """Test the get_account_id function when an exception occurs."""
+    mock_session = MagicMock()
+    mock_sts_client = MagicMock()
+    mock_sts_client.get_caller_identity.side_effect = Exception('Test error')
+    mock_session.client.return_value = mock_sts_client
+
+    with patch(
+        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_aws_session',
+        return_value=mock_session,
+    ):
+        with pytest.raises(ValueError, match='Failed to get AWS account ID: Test error'):
             get_account_id()
+        mock_session.client.assert_called_once_with('sts', region_name=get_region())
+        mock_sts_client.get_caller_identity.assert_called_once()
 
 
 def test_get_bucket_name():
@@ -65,14 +88,24 @@ def test_get_base_dir():
 
 def test_get_profile_arn():
     """Test the get_profile_arn function."""
-    with patch.dict(os.environ, {'AWS_REGION': 'us-west-2', 'AWS_ACCOUNT_ID': '123456789012'}):
-        assert (
-            get_profile_arn()
-            == 'arn:aws:bedrock:us-west-2:123456789012:data-automation-profile/us.data-automation-v1'
-        )
+    with patch(
+        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_region',
+        return_value='us-west-2',
+    ):
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
+        ):
+            assert (
+                get_profile_arn()
+                == 'arn:aws:bedrock:us-west-2:123456789012:data-automation-profile/us.data-automation-v1'
+            )
 
-    with patch.dict(os.environ, {'AWS_REGION': 'us-west-2'}, clear=True):
-        with pytest.raises(ValueError, match='AWS_ACCOUNT_ID environment variable is not set'):
+    with patch(
+        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+        side_effect=ValueError('Failed to get AWS account ID'),
+    ):
+        with pytest.raises(ValueError, match='Failed to get AWS account ID'):
             get_profile_arn()
 
 
@@ -303,29 +336,106 @@ async def test_invoke_data_automation_and_get_results():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
         ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
+                with patch(
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
+                    }
 
-                # Mock the get_data_automation_status responses to simulate job completion
-                mock_runtime.get_data_automation_status.side_effect = [
-                    {'status': 'InProgress'},
-                    {
-                        'status': 'Success',
-                        'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
-                    },
-                ]
-                mock_get_runtime.return_value = mock_runtime
+                    # Mock the get_data_automation_status responses to simulate job completion
+                    mock_runtime.get_data_automation_status.side_effect = [
+                        {'status': 'InProgress'},
+                        {
+                            'status': 'Success',
+                            'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
+                        },
+                    ]
+                    mock_get_runtime.return_value = mock_runtime
 
-                # Mock the asyncio.sleep to avoid actual waiting
-                with patch('asyncio.sleep', new=AsyncMock()):
+                    # Mock the asyncio.sleep to avoid actual waiting
+                    with patch('asyncio.sleep', new=AsyncMock()):
+                        # Mock the download_from_s3 function to return job metadata and outputs
+                        with patch(
+                            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
+                            new=AsyncMock(
+                                side_effect=[
+                                    # First call returns job metadata
+                                    {
+                                        'output_metadata': [
+                                            {
+                                                'segment_metadata': [
+                                                    {
+                                                        'standard_output_path': 's3://test-bucket/standard-output.json',
+                                                        'custom_output_path': 's3://test-bucket/custom-output.json',
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    # Second call returns standard output
+                                    {'standard': 'output'},
+                                    # Third call returns custom output
+                                    {'custom': 'output'},
+                                ]
+                            ),
+                        ):
+                            result = await invoke_data_automation_and_get_results(
+                                '/path/to/asset.pdf', 'test-project-arn'
+                            )
+
+                            assert result == {
+                                'standardOutput': {'standard': 'output'},
+                                'customOutput': {'custom': 'output'},
+                            }
+
+                            # Verify the invoke_data_automation_async call
+                            mock_runtime.invoke_data_automation_async.assert_called_once_with(
+                                inputConfiguration={'s3Uri': 's3://test-bucket/mcp/test-uuid.pdf'},
+                                outputConfiguration={'s3Uri': 's3://test-bucket/mcp/test-output'},
+                                dataAutomationConfiguration={
+                                    'dataAutomationProjectArn': 'test-project-arn'
+                                },
+                                dataAutomationProfileArn='arn:aws:bedrock:us-east-1:123456789012:data-automation-profile/us.data-automation-v1',
+                            )
+
+
+@pytest.mark.asyncio
+async def test_invoke_data_automation_and_get_results_default_project():
+    """Test the invoke_data_automation_and_get_results function with default project."""
+    # Mock all the necessary functions and responses
+    with patch(
+        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
+        new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
+    ):
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
+        ):
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
+                with patch(
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
+                    }
+
+                    # Mock the get_data_automation_status responses to simulate job completion
+                    mock_runtime.get_data_automation_status.side_effect = [
+                        {
+                            'status': 'Success',
+                            'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
+                        }
+                    ]
+                    mock_get_runtime.return_value = mock_runtime
+
                     # Mock the download_from_s3 function to return job metadata and outputs
                     with patch(
                         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
@@ -351,95 +461,22 @@ async def test_invoke_data_automation_and_get_results():
                             ]
                         ),
                     ):
-                        result = await invoke_data_automation_and_get_results(
-                            '/path/to/asset.pdf', 'test-project-arn'
-                        )
+                        result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
                         assert result == {
                             'standardOutput': {'standard': 'output'},
                             'customOutput': {'custom': 'output'},
                         }
 
-                        # Verify the invoke_data_automation_async call
+                        # Verify the invoke_data_automation_async call with default project ARN
                         mock_runtime.invoke_data_automation_async.assert_called_once_with(
                             inputConfiguration={'s3Uri': 's3://test-bucket/mcp/test-uuid.pdf'},
                             outputConfiguration={'s3Uri': 's3://test-bucket/mcp/test-output'},
                             dataAutomationConfiguration={
-                                'dataAutomationProjectArn': 'test-project-arn'
+                                'dataAutomationProjectArn': 'arn:aws:bedrock:us-east-1:aws:data-automation-project/public-default'
                             },
                             dataAutomationProfileArn='arn:aws:bedrock:us-east-1:123456789012:data-automation-profile/us.data-automation-v1',
                         )
-
-
-@pytest.mark.asyncio
-async def test_invoke_data_automation_and_get_results_default_project():
-    """Test the invoke_data_automation_and_get_results function with default project."""
-    # Mock all the necessary functions and responses
-    with patch(
-        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
-        new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
-    ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
-        ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
-
-                # Mock the get_data_automation_status responses to simulate job completion
-                mock_runtime.get_data_automation_status.side_effect = [
-                    {
-                        'status': 'Success',
-                        'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
-                    }
-                ]
-                mock_get_runtime.return_value = mock_runtime
-
-                # Mock the download_from_s3 function to return job metadata and outputs
-                with patch(
-                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
-                    new=AsyncMock(
-                        side_effect=[
-                            # First call returns job metadata
-                            {
-                                'output_metadata': [
-                                    {
-                                        'segment_metadata': [
-                                            {
-                                                'standard_output_path': 's3://test-bucket/standard-output.json',
-                                                'custom_output_path': 's3://test-bucket/custom-output.json',
-                                            }
-                                        ]
-                                    }
-                                ]
-                            },
-                            # Second call returns standard output
-                            {'standard': 'output'},
-                            # Third call returns custom output
-                            {'custom': 'output'},
-                        ]
-                    ),
-                ):
-                    result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
-
-                    assert result == {
-                        'standardOutput': {'standard': 'output'},
-                        'customOutput': {'custom': 'output'},
-                    }
-
-                    # Verify the invoke_data_automation_async call with default project ARN
-                    mock_runtime.invoke_data_automation_async.assert_called_once_with(
-                        inputConfiguration={'s3Uri': 's3://test-bucket/mcp/test-uuid.pdf'},
-                        outputConfiguration={'s3Uri': 's3://test-bucket/mcp/test-output'},
-                        dataAutomationConfiguration={
-                            'dataAutomationProjectArn': 'arn:aws:bedrock:us-east-1:aws:data-automation-project/public-default'
-                        },
-                        dataAutomationProfileArn='arn:aws:bedrock:us-east-1:123456789012:data-automation-profile/us.data-automation-v1',
-                    )
 
 
 @pytest.mark.asyncio
@@ -450,25 +487,23 @@ async def test_invoke_data_automation_and_get_results_no_profile_arn():
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
         with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}, clear=True):
-            with pytest.raises(
-                ValueError,
-                match='AWS_ACCOUNT_ID environment variable is not set',
+            with patch(
+                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+                side_effect=ValueError('Failed to get AWS account ID'),
             ):
-                await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+                with pytest.raises(
+                    ValueError,
+                    match='Failed to get AWS account ID',
+                ):
+                    await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
 async def test_invoke_data_automation_and_get_results_no_bucket():
     """Test the invoke_data_automation_and_get_results function when bucket name is not set."""
-    with patch(
-        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
-        new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
-    ):
-        with patch.dict(os.environ, {'AWS_ACCOUNT_ID': '123456789012'}, clear=True):
-            with pytest.raises(
-                ValueError, match='AWS_BUCKET_NAME environment variable is not set'
-            ):
-                await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(ValueError, match='AWS_BUCKET_NAME environment variable is not set'):
+            await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -478,23 +513,25 @@ async def test_invoke_data_automation_and_get_results_job_failed():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
         ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
+                with patch(
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
+                    }
 
-                # Mock the get_data_automation_status responses to simulate job failure
-                mock_runtime.get_data_automation_status.return_value = {'status': 'FAILED'}
-                mock_get_runtime.return_value = mock_runtime
+                    # Mock the get_data_automation_status responses to simulate job failure
+                    mock_runtime.get_data_automation_status.return_value = {'status': 'FAILED'}
+                    mock_get_runtime.return_value = mock_runtime
 
-                with pytest.raises(ValueError, match='Data Automation failed: .*'):
-                    await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+                    with pytest.raises(ValueError, match='Data Automation failed: .*'):
+                        await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -504,26 +541,28 @@ async def test_invoke_data_automation_and_get_results_no_output_uri():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
         ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
+                with patch(
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
+                    }
 
-                # Mock the get_data_automation_status responses with missing output URI
-                mock_runtime.get_data_automation_status.return_value = {
-                    'status': 'Success',
-                    'outputConfiguration': {},
-                }
-                mock_get_runtime.return_value = mock_runtime
+                    # Mock the get_data_automation_status responses with missing output URI
+                    mock_runtime.get_data_automation_status.return_value = {
+                        'status': 'Success',
+                        'outputConfiguration': {},
+                    }
+                    mock_get_runtime.return_value = mock_runtime
 
-                with pytest.raises(ValueError, match='Data Automation failed: .*'):
-                    await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+                    with pytest.raises(ValueError, match='Data Automation failed: .*'):
+                        await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -533,34 +572,36 @@ async def test_invoke_data_automation_and_get_results_no_job_metadata():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
         ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
-
-                # Mock the get_data_automation_status responses
-                mock_runtime.get_data_automation_status.return_value = {
-                    'status': 'Success',
-                    'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
-                }
-                mock_get_runtime.return_value = mock_runtime
-
-                # Mock download_from_s3 to return None for job metadata
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
                 with patch(
-                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
-                    new=AsyncMock(return_value=None),
-                ):
-                    with pytest.raises(
-                        ValueError,
-                        match='Data Automation failed. No standard or custom output found',
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
+                    }
+
+                    # Mock the get_data_automation_status responses
+                    mock_runtime.get_data_automation_status.return_value = {
+                        'status': 'Success',
+                        'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
+                    }
+                    mock_get_runtime.return_value = mock_runtime
+
+                    # Mock download_from_s3 to return None for job metadata
+                    with patch(
+                        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
+                        new=AsyncMock(return_value=None),
                     ):
-                        await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+                        with pytest.raises(
+                            ValueError,
+                            match='Data Automation failed. No standard or custom output found',
+                        ):
+                            await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -570,34 +611,36 @@ async def test_invoke_data_automation_and_get_results_invalid_metadata():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
         ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
-
-                # Mock the get_data_automation_status responses
-                mock_runtime.get_data_automation_status.return_value = {
-                    'status': 'Success',
-                    'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
-                }
-                mock_get_runtime.return_value = mock_runtime
-
-                # Mock download_from_s3 to return invalid metadata structure
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
                 with patch(
-                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
-                    new=AsyncMock(return_value={'invalid': 'structure'}),
-                ):
-                    with pytest.raises(
-                        ValueError,
-                        match='Data Automation failed. No standard or custom output found',
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
+                    }
+
+                    # Mock the get_data_automation_status responses
+                    mock_runtime.get_data_automation_status.return_value = {
+                        'status': 'Success',
+                        'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
+                    }
+                    mock_get_runtime.return_value = mock_runtime
+
+                    # Mock download_from_s3 to return invalid metadata structure
+                    with patch(
+                        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
+                        new=AsyncMock(return_value={'invalid': 'structure'}),
                     ):
-                        await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+                        with pytest.raises(
+                            ValueError,
+                            match='Data Automation failed. No standard or custom output found',
+                        ):
+                            await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -607,44 +650,49 @@ async def test_invoke_data_automation_and_get_results_no_output_paths():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
         ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
-
-                # Mock the get_data_automation_status responses
-                mock_runtime.get_data_automation_status.return_value = {
-                    'status': 'Success',
-                    'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
-                }
-                mock_get_runtime.return_value = mock_runtime
-
-                # Mock download_from_s3 to return metadata with empty output paths
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
                 with patch(
-                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
-                    new=AsyncMock(
-                        return_value={
-                            'output_metadata': [
-                                {
-                                    'segment_metadata': [
-                                        {'standard_output_path': None, 'custom_output_path': None}
-                                    ]
-                                }
-                            ]
-                        }
-                    ),
-                ):
-                    with pytest.raises(
-                        ValueError,
-                        match='Data Automation failed. No standard or custom output found',
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
+                    }
+
+                    # Mock the get_data_automation_status responses
+                    mock_runtime.get_data_automation_status.return_value = {
+                        'status': 'Success',
+                        'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
+                    }
+                    mock_get_runtime.return_value = mock_runtime
+
+                    # Mock download_from_s3 to return metadata with empty output paths
+                    with patch(
+                        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
+                        new=AsyncMock(
+                            return_value={
+                                'output_metadata': [
+                                    {
+                                        'segment_metadata': [
+                                            {
+                                                'standard_output_path': None,
+                                                'custom_output_path': None,
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ),
                     ):
-                        await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+                        with pytest.raises(
+                            ValueError,
+                            match='Data Automation failed. No standard or custom output found',
+                        ):
+                            await invoke_data_automation_and_get_results('/path/to/asset.pdf')
 
 
 @pytest.mark.asyncio
@@ -654,50 +702,52 @@ async def test_invoke_data_automation_and_get_results_only_standard_output():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
         ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
-
-                # Mock the get_data_automation_status responses
-                mock_runtime.get_data_automation_status.return_value = {
-                    'status': 'Success',
-                    'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
-                }
-                mock_get_runtime.return_value = mock_runtime
-
-                # Mock download_from_s3 to return metadata with only standard output path
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
                 with patch(
-                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
-                    new=AsyncMock(
-                        side_effect=[
-                            {
-                                'output_metadata': [
-                                    {
-                                        'segment_metadata': [
-                                            {
-                                                'standard_output_path': 's3://test-bucket/standard-output.json',
-                                                'custom_output_path': None,
-                                            }
-                                        ]
-                                    }
-                                ]
-                            },
-                            {'standard': 'output'},
-                        ]
-                    ),
-                ):
-                    result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
-                    assert result == {
-                        'standardOutput': {'standard': 'output'},
-                        'customOutput': None,
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
                     }
+
+                    # Mock the get_data_automation_status responses
+                    mock_runtime.get_data_automation_status.return_value = {
+                        'status': 'Success',
+                        'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
+                    }
+                    mock_get_runtime.return_value = mock_runtime
+
+                    # Mock download_from_s3 to return metadata with only standard output path
+                    with patch(
+                        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
+                        new=AsyncMock(
+                            side_effect=[
+                                {
+                                    'output_metadata': [
+                                        {
+                                            'segment_metadata': [
+                                                {
+                                                    'standard_output_path': 's3://test-bucket/standard-output.json',
+                                                    'custom_output_path': None,
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {'standard': 'output'},
+                            ]
+                        ),
+                    ):
+                        result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+                        assert result == {
+                            'standardOutput': {'standard': 'output'},
+                            'customOutput': None,
+                        }
 
 
 @pytest.mark.asyncio
@@ -707,44 +757,49 @@ async def test_invoke_data_automation_and_get_results_only_custom_output():
         'awslabs.aws_bedrock_data_automation_mcp_server.helpers.upload_to_s3',
         new=AsyncMock(return_value='s3://test-bucket/mcp/test-uuid.pdf'),
     ):
-        with patch.dict(
-            os.environ, {'AWS_BUCKET_NAME': 'test-bucket', 'AWS_ACCOUNT_ID': '123456789012'}
+        with patch(
+            'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_account_id',
+            return_value='123456789012',
         ):
-            with patch(
-                'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
-            ) as mock_get_runtime:
-                mock_runtime = MagicMock()
-                mock_runtime.invoke_data_automation_async.return_value = {
-                    'invocationArn': 'test-invocation-arn'
-                }
-
-                # Mock the get_data_automation_status responses
-                mock_runtime.get_data_automation_status.return_value = {
-                    'status': 'Success',
-                    'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
-                }
-                mock_get_runtime.return_value = mock_runtime
-
-                # Mock download_from_s3 to return metadata with only custom output path
+            with patch.dict(os.environ, {'AWS_BUCKET_NAME': 'test-bucket'}):
                 with patch(
-                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
-                    new=AsyncMock(
-                        side_effect=[
-                            {
-                                'output_metadata': [
-                                    {
-                                        'segment_metadata': [
-                                            {
-                                                'standard_output_path': None,
-                                                'custom_output_path': 's3://test-bucket/custom-output.json',
-                                            }
-                                        ]
-                                    }
-                                ]
-                            },
-                            {'custom': 'output'},
-                        ]
-                    ),
-                ):
-                    result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
-                    assert result == {'standardOutput': None, 'customOutput': {'custom': 'output'}}
+                    'awslabs.aws_bedrock_data_automation_mcp_server.helpers.get_bedrock_data_automation_runtime_client'
+                ) as mock_get_runtime:
+                    mock_runtime = MagicMock()
+                    mock_runtime.invoke_data_automation_async.return_value = {
+                        'invocationArn': 'test-invocation-arn'
+                    }
+
+                    # Mock the get_data_automation_status responses
+                    mock_runtime.get_data_automation_status.return_value = {
+                        'status': 'Success',
+                        'outputConfiguration': {'s3Uri': 's3://test-bucket/mcp/test-output'},
+                    }
+                    mock_get_runtime.return_value = mock_runtime
+
+                    # Mock download_from_s3 to return metadata with only custom output path
+                    with patch(
+                        'awslabs.aws_bedrock_data_automation_mcp_server.helpers.download_from_s3',
+                        new=AsyncMock(
+                            side_effect=[
+                                {
+                                    'output_metadata': [
+                                        {
+                                            'segment_metadata': [
+                                                {
+                                                    'standard_output_path': None,
+                                                    'custom_output_path': 's3://test-bucket/custom-output.json',
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {'custom': 'output'},
+                            ]
+                        ),
+                    ):
+                        result = await invoke_data_automation_and_get_results('/path/to/asset.pdf')
+                        assert result == {
+                            'standardOutput': None,
+                            'customOutput': {'custom': 'output'},
+                        }
